@@ -2,6 +2,7 @@ import {
   Accordion,
   AccordionItem,
   FileTrigger,
+  AccordionContent,
 } from "@/components/ui/accordion";
 
 import { useState } from "react";
@@ -12,10 +13,13 @@ import { cn } from "@/lib/utils";
 interface NestedTreeNode {
   name: string;
   children?: NestedTreeNode[];
-  icon?: LucideIcon | React.ComponentType<{ className?: string }>;
   className?: string;
   disabled?: boolean;
+  icon?: LucideIcon | React.ComponentType<{ className?: string }>;
+  addChildrenIcon?: LucideIcon | React.ComponentType<{ className?: string }>;
+  emptyStateElement?: (node: NestedTreeNode) => React.ReactNode;
   onClick?: (node: NestedTreeNode) => void;
+  onAddChildren?: (node: NestedTreeNode) => void;
 }
 
 interface FlatTreeNode extends Omit<NestedTreeNode, "children"> {
@@ -23,10 +27,9 @@ interface FlatTreeNode extends Omit<NestedTreeNode, "children"> {
   depth: number;
   parent: string; // Parent ID (or "ROOT")
   children: boolean;
+  isEmpty: boolean;
   originalNode: NestedTreeNode; // Store reference to original node for onClick handler
 }
-
-// using initial so that in case of large tree we dont have to spread and create objects everytime
 
 interface TreeProps {
   nodes: NestedTreeNode[];
@@ -48,11 +51,15 @@ function walkTree(
       name: node.name,
       depth: depth,
       parent: parentId,
-      children: !!node.children?.length,
+      isEmpty: node.children?.length === 0,
+      children: !!node.children, // not using length so that if children has empty array that means it will be an accordion and if on children that means leaf node
       icon: node.icon,
+      addChildrenIcon: node.addChildrenIcon,
+      emptyStateElement: node.emptyStateElement,
       className: node.className,
       disabled: node.disabled,
       onClick: node.onClick,
+      onAddChildren: node.onAddChildren,
       originalNode: node,
     });
     if (node?.children)
@@ -156,6 +163,13 @@ export default function Tree({ nodes, indent = 10, onExpand }: TreeProps) {
     }
   };
 
+  const handleAddChildren = (node: FlatTreeNode, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering the accordion expand/collapse
+    if (node.onAddChildren) {
+      node.onAddChildren(node.originalNode);
+    }
+  };
+
   return (
     <Accordion
       onValueChange={(value) => handleExpand(value)}
@@ -174,15 +188,40 @@ export default function Tree({ nodes, indent = 10, onExpand }: TreeProps) {
               disabled={node.disabled}
             >
               {node.children || node.parent === "ROOT" ? (
-                <FileTrigger
-                  className="py-2"
-                  onClick={() => handleNodeClick(node)}
-                >
-                  <div className="flex items-center flex-1">
-                    {getNodeIcon(node)}
-                    <span>{node.name}</span>
-                  </div>
-                </FileTrigger>
+                <>
+                  <FileTrigger
+                    className="py-2"
+                    onClick={() => handleNodeClick(node)}
+                  >
+                    <div className="flex items-center flex-1">
+                      {getNodeIcon(node)}
+                      <span>{node.name}</span>
+                      {node.addChildrenIcon && (
+                        <button
+                          className="ml-auto mr-2 p-1 rounded hover:bg-accent transition-colors"
+                          onClick={(e) => handleAddChildren(node, e)}
+                          title="Add children"
+                        >
+                          {(() => {
+                            const AddIcon = node.addChildrenIcon!;
+                            return (
+                              <AddIcon className="h-4 w-4 text-accent-foreground/70" />
+                            );
+                          })()}
+                        </button>
+                      )}
+                    </div>
+                  </FileTrigger>
+                  {node.isEmpty &&
+                  expandedNodes.has(node.id) &&
+                  node.emptyStateElement ? (
+                    <AccordionContent>
+                      <div className="px-7">
+                        {node.emptyStateElement(node.originalNode)}
+                      </div>
+                    </AccordionContent>
+                  ) : null}
+                </>
               ) : (
                 <div
                   className={cn(
